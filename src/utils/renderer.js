@@ -149,10 +149,40 @@ function arrayBufferToBase64(buffer) {
     return btoa(binary);
 }
 
+function buildFullContext() {
+    const parts = [];
+
+    const responseStyle = localStorage.getItem('responseStyle')?.trim();
+    if (responseStyle) {
+        parts.push(`Response style instructions:\n${responseStyle}`);
+    }
+
+    const customPrompt = localStorage.getItem('customPrompt')?.trim();
+    if (customPrompt) {
+        parts.push(`Additional instructions:\n${customPrompt}`);
+    }
+
+    try {
+        const filesRaw = localStorage.getItem('meetingContextFiles');
+        if (filesRaw) {
+            const files = JSON.parse(filesRaw);
+            if (files.length > 0) {
+                const docs = files.map(f => `--- ${f.name} ---\n${f.content}`).join('\n\n');
+                parts.push(`Reference documents provided by the user:\n${docs}`);
+            }
+        }
+    } catch (e) {
+        console.warn('Could not parse meeting context files:', e);
+    }
+
+    return parts.join('\n\n');
+}
+
 async function initializeGemini(profile = 'interview', language = 'en-US') {
     const apiKey = localStorage.getItem('apiKey')?.trim();
     if (apiKey) {
-        const success = await ipcRenderer.invoke('initialize-gemini', apiKey, localStorage.getItem('customPrompt') || '', profile, language);
+        const fullContext = buildFullContext();
+        const success = await ipcRenderer.invoke('initialize-gemini', apiKey, fullContext, profile, language);
         if (success) {
             cheddar.setStatus('Live');
         } else {

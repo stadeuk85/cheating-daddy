@@ -2,7 +2,9 @@ if (require('electron-squirrel-startup')) {
     process.exit(0);
 }
 
-const { app, BrowserWindow, shell, ipcMain } = require('electron');
+const { app, BrowserWindow, shell, ipcMain, dialog } = require('electron');
+const path = require('path');
+const officeParser = require('officeparser');
 const { createWindow, updateGlobalShortcuts } = require('./utils/window');
 const { setupGeminiIpcHandlers, stopMacOSAudioCapture, sendToRenderer } = require('./utils/gemini');
 const { initializeRandomProcessNames } = require('./utils/processRandomizer');
@@ -153,6 +155,35 @@ function setupGeneralIpcHandlers() {
         } catch (error) {
             console.error('Error getting random display name:', error);
             return 'System Monitor';
+        }
+    });
+
+    ipcMain.handle('open-document-picker', async event => {
+        try {
+            const result = await dialog.showOpenDialog(mainWindow, {
+                properties: ['openFile', 'multiSelections'],
+                filters: [{ name: 'Documents', extensions: ['pdf', 'docx', 'pptx'] }],
+            });
+
+            if (result.canceled || result.filePaths.length === 0) {
+                return { success: false, canceled: true };
+            }
+
+            const files = [];
+            for (const filePath of result.filePaths) {
+                try {
+                    const text = await officeParser.parseOfficeAsync(filePath);
+                    files.push({ name: path.basename(filePath), content: text.trim() });
+                } catch (err) {
+                    console.error('Error parsing file:', filePath, err);
+                    files.push({ name: path.basename(filePath), content: `[Could not parse file: ${err.message}]` });
+                }
+            }
+
+            return { success: true, files };
+        } catch (error) {
+            console.error('Error in open-document-picker:', error);
+            return { success: false, error: error.message };
         }
     });
 }
