@@ -396,6 +396,85 @@ export class CustomizeView extends LitElement {
             font-size: 10px;
             color: var(--description-color, rgba(255, 255, 255, 0.5));
         }
+
+        .file-upload-area {
+            border: 1px dashed var(--input-border, rgba(255, 255, 255, 0.2));
+            border-radius: 4px;
+            padding: 14px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            background: var(--input-background, rgba(0, 0, 0, 0.2));
+        }
+
+        .file-upload-area:hover {
+            border-color: var(--focus-border-color, #007aff);
+            background: rgba(0, 122, 255, 0.05);
+        }
+
+        .file-upload-label {
+            font-size: 12px;
+            color: var(--description-color, rgba(255, 255, 255, 0.5));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            cursor: pointer;
+        }
+
+        .file-upload-label span {
+            color: var(--focus-border-color, #007aff);
+            font-weight: 500;
+        }
+
+        .file-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-top: 8px;
+        }
+
+        .file-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: var(--input-background, rgba(0, 0, 0, 0.3));
+            border: 1px solid var(--input-border, rgba(255, 255, 255, 0.1));
+            border-radius: 4px;
+            padding: 6px 10px;
+            font-size: 11px;
+        }
+
+        .file-item-name {
+            color: var(--text-color);
+            font-weight: 500;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 80%;
+        }
+
+        .file-item-remove {
+            background: none;
+            border: none;
+            color: var(--description-color, rgba(255, 255, 255, 0.4));
+            cursor: pointer;
+            font-size: 14px;
+            line-height: 1;
+            padding: 0 2px;
+            transition: color 0.15s ease;
+        }
+
+        .file-item-remove:hover {
+            color: #ef4444;
+        }
+
+        .file-parsing-indicator {
+            font-size: 11px;
+            color: var(--description-color, rgba(255, 255, 255, 0.5));
+            text-align: center;
+            padding: 4px;
+        }
     `;
 
     static properties = {
@@ -415,6 +494,8 @@ export class CustomizeView extends LitElement {
         onLayoutModeChange: { type: Function },
         advancedMode: { type: Boolean },
         onAdvancedModeChange: { type: Function },
+        meetingFiles: { type: Array },
+        isParsingFiles: { type: Boolean },
     };
 
     constructor() {
@@ -438,6 +519,10 @@ export class CustomizeView extends LitElement {
         // Advanced mode default
         this.advancedMode = false;
 
+        // Pre-meeting context
+        this.meetingFiles = [];
+        this.isParsingFiles = false;
+
         // Background transparency default
         this.backgroundTransparency = 0.8;
 
@@ -449,6 +534,7 @@ export class CustomizeView extends LitElement {
         this.loadAdvancedModeSettings();
         this.loadBackgroundTransparency();
         this.loadFontSize();
+        this.loadMeetingFiles();
     }
 
     connectedCallback() {
@@ -571,6 +657,51 @@ export class CustomizeView extends LitElement {
 
     handleCustomPromptInput(e) {
         localStorage.setItem('customPrompt', e.target.value);
+    }
+
+    handleResponseStyleInput(e) {
+        localStorage.setItem('responseStyle', e.target.value);
+    }
+
+    loadMeetingFiles() {
+        try {
+            const raw = localStorage.getItem('meetingContextFiles');
+            if (raw) {
+                this.meetingFiles = JSON.parse(raw);
+            }
+        } catch (e) {
+            this.meetingFiles = [];
+        }
+    }
+
+    saveMeetingFiles() {
+        localStorage.setItem('meetingContextFiles', JSON.stringify(this.meetingFiles));
+    }
+
+    async handleUploadFiles() {
+        if (!window.require) return;
+        this.isParsingFiles = true;
+        this.requestUpdate();
+
+        try {
+            const { ipcRenderer } = window.require('electron');
+            const result = await ipcRenderer.invoke('open-document-picker');
+            if (result.success && result.files) {
+                this.meetingFiles = [...this.meetingFiles, ...result.files];
+                this.saveMeetingFiles();
+            }
+        } catch (err) {
+            console.error('Error uploading files:', err);
+        } finally {
+            this.isParsingFiles = false;
+            this.requestUpdate();
+        }
+    }
+
+    handleRemoveFile(index) {
+        this.meetingFiles = this.meetingFiles.filter((_, i) => i !== index);
+        this.saveMeetingFiles();
+        this.requestUpdate();
     }
 
     getDefaultKeybinds() {
@@ -865,6 +996,60 @@ export class CustomizeView extends LitElement {
 
         return html`
             <div class="settings-container">
+                <!-- Pre-Meeting Context Section -->
+                <div class="settings-section">
+                    <div class="section-title">
+                        <span>Pre-Meeting Context</span>
+                    </div>
+
+                    <div class="form-grid">
+                        <div class="form-group full-width">
+                            <label class="form-label">Reference Documents</label>
+                            <div class="form-description" style="margin-bottom: 8px;">
+                                Upload PDFs, Word docs, or PowerPoint files — the AI will read them and use them to support you during the session.
+                            </div>
+
+                            <div class="file-upload-area" @click=${this.handleUploadFiles}>
+                                <label class="file-upload-label">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                        <polyline points="17 8 12 3 7 8"/>
+                                        <line x1="12" y1="3" x2="12" y2="15"/>
+                                    </svg>
+                                    <span>Choose files</span> &nbsp;— PDF, DOCX, PPTX
+                                </label>
+                            </div>
+
+                            ${this.isParsingFiles ? html`<div class="file-parsing-indicator">Reading files...</div>` : ''}
+
+                            ${this.meetingFiles.length > 0 ? html`
+                                <div class="file-list">
+                                    ${this.meetingFiles.map((file, index) => html`
+                                        <div class="file-item">
+                                            <span class="file-item-name">${file.name}</span>
+                                            <button class="file-item-remove" @click=${() => this.handleRemoveFile(index)} title="Remove">×</button>
+                                        </div>
+                                    `)}
+                                </div>
+                            ` : ''}
+                        </div>
+
+                        <div class="form-group full-width">
+                            <label class="form-label">How should the AI guide you?</label>
+                            <textarea
+                                class="form-control"
+                                placeholder="e.g. Keep answers under 2 sentences. Always reference the slide deck. Flag any numbers I say that don't match the doc. Speak like a senior consultant."
+                                .value=${localStorage.getItem('responseStyle') || ''}
+                                rows="4"
+                                @input=${this.handleResponseStyleInput}
+                            ></textarea>
+                            <div class="form-description">
+                                Describe the tone, format, and rules you want the AI to follow when guiding you.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Profile & Behavior Section -->
                 <div class="settings-section">
                     <div class="section-title">
